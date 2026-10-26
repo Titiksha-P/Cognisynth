@@ -38,7 +38,7 @@ Python 3.10+ is recommended.
 
 ```bash
 python -m venv .venv
-# Windows PowerShell: .venv\Scripts\Activate.ps1
+# Windows PowerShell: .venv\\Scripts\\Activate.ps1
 # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 python -m unittest discover -s tests -v
@@ -96,4 +96,4 @@ This implementation is a reproducible research scaffold, not a formal proof of s
 
 ## License
 
-No license has been selected yet. Until a license is added, normal copyright restrictions apply.
+Cognisynth is licensed under the **MIT License**.
