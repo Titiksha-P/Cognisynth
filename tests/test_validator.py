@@ -9,6 +9,7 @@ from safety.formal_validator import (
     UIBlueprint,
     validate_payload,
     validate_proposal,
+    visual_entropy_index,
 )
 
 
@@ -75,6 +76,26 @@ class ValidatorTests(unittest.TestCase):
         self.assertFalse(result.accepted)
         self.assertEqual(result.blueprint, SAFE_FALLBACK)
         self.assertIn("FRAME_BUDGET_EXCEEDED", {v.code for v in result.violations})
+
+    def test_visual_entropy_must_not_increase_when_stress_rises(self):
+        proposal = SAFE_FALLBACK.model_copy(deep=True)
+        proposal.visible_streams.extend([f"stream_{i}" for i in range(20)])
+        proposal.panic_index = 0.5
+        proposal.density_score = 1.5
+
+        result = validate_proposal(
+            proposal,
+            expected_panic_index=0.5,
+            previous_panic_index=0.0,
+            previous_visual_entropy_index=visual_entropy_index(SAFE_FALLBACK),
+        )
+
+        self.assertFalse(result.accepted)
+        self.assertEqual(result.blueprint, SAFE_FALLBACK)
+        self.assertIn(
+            "VISUAL_ENTROPY_MONOTONICITY_VIOLATION",
+            {v.code for v in result.violations},
+        )
 
 
 if __name__ == "__main__":
