@@ -123,11 +123,11 @@ It also computes a heuristic visual entropy proxy:
 
 Here n_v is the count of visible controls and streams, n_e the navigation-edge count, and n_c the count of collapsed streams. This is not a validated cognitive-load metric.
 
-A **monotonicity invariant is a target extension**, not currently enforced by validate_proposal. For successive accepted blueprints within a defined escalation regime, require:
+The validator supports a cross-window monotonicity invariant when the caller supplies the previous accepted blueprint state. For successive accepted blueprints within a defined escalation regime, require:
 
 `pₜ₊₁ ≥ pₜ ⇒ E_v(bₜ₊₁) ≤ E_v(bₜ) + δ`
 
-where δ ≥ 0 is an experimentally justified tolerance. The regime, hysteresis, recovery behavior, and measurement window must be specified to avoid oscillatory UI changes. Until cross-window comparison is implemented and tested, claim only the existing density-score ceiling.
+where δ ≥ 0 is an experimentally justified tolerance. The regime, hysteresis, recovery behavior, and measurement window must be specified to avoid oscillatory UI changes. The compiler accepts previous_blueprint and supplies its panic index and visual entropy to the validator. The first window has no prior state to compare. Callers must pass the last accepted blueprint on subsequent windows; otherwise only the density-score ceiling is enforced. The tolerance defaults to zero, so entropy must be non-increasing as stress rises.
 
 ### 4.4 Fail-closed fallback routing
 
@@ -149,7 +149,7 @@ UIBlueprint, Violation, and ValidationResult use Pydantic V2-style models and fi
 | Critical controls | Checks all three identifiers are visible | Domain-specific hazard analysis and end-to-end UI tests |
 | Graph reachability | Traverses from home if present | Reject absent home explicitly; test graph edge cases |
 | Density ceiling | Enforces panic-dependent density_score ceiling | Calibrate threshold against human-subject data |
-| Visual entropy | Computes heuristic proxy | Implement monotonic cross-window comparison and calibrate proxy |
+| Visual entropy | Computes heuristic proxy and rejects an increase when prior state is supplied and stress rises | Calibrate proxy; ensure callers consistently pass the last accepted blueprint |
 | Fail-closed proposal handling | Compiler returns fallback on common error paths | Fault injection, exception-path tests, runtime rollback tests |
 | Inference deadline | Compiler default currently uses a 4.0 s timeout | Set and test the intended 750 ms policy in code |
 | DOM mutation | Uses registered IDs and rejects missing elements | Atomic patching or documented rollback semantics |
