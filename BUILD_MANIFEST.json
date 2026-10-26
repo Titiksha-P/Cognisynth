@@ -1,0 +1,19 @@
+{
+  "project": "Cognisynth",
+  "research_title": "Formal Cognitive Synthesizers: A Deterministic Runtime-Compiler Framework for Mitigating Human Operator Telemetry Chaos via Real-Time UI Mutation",
+  "artifacts": [
+    "core/cognitive_compiler.py",
+    "core/jspsych_runtime_bridge.js",
+    "safety/formal_validator.py",
+    "tests/telemetry_simulator.py",
+    "tests/test_validator.py",
+    "synthetic_telemetry.jsonl"
+  ],
+  "verification_commands": [
+    "python -m unittest discover -s tests -v",
+    "python -m safety.formal_validator",
+    "python -m tests.telemetry_simulator --samples 30 --rate 10 --seed 7",
+    "node --check core/jspsych_runtime_bridge.js"
+  ],
+  "status": "Research prototype; synthetic-only validation; not safety certified"
+}
