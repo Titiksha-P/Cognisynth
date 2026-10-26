@@ -31,14 +31,25 @@ def panic_index(t: TelemetrySnapshot) -> float:
 
 
 def compile_blueprint(telemetry: TelemetrySnapshot, *, client=None,
-                      timeout_seconds: float = 4.0, max_age_seconds: float = 10.0) -> UIBlueprint:
-    """Return a validated blueprint or deterministic fallback; never trust raw model output."""
+                      timeout_seconds: float = 0.75, max_age_seconds: float = 10.0) -> UIBlueprint:
+    """Return a validated blueprint or deterministic fallback; never trust raw model output.
+
+    The inference/parse path is capped at 750 ms. SDK retries are disabled so a retry
+    cannot silently extend the deadline. Any late response fails closed to SAFE_FALLBACK.
+    """
     if time.time() - telemetry.timestamp > max_age_seconds:
         return SAFE_FALLBACK.model_copy(deep=True)
+
+    # Enforce the architectural ceiling even if a caller supplies a larger timeout.
+    request_timeout = min(max(float(timeout_seconds), 0.001), 0.75)
     if client is None:
         try:
             from openai import OpenAI
-            client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"), timeout=timeout_seconds)
+            client = OpenAI(
+                api_key=os.environ.get("OPENAI_API_KEY"),
+                timeout=request_timeout,
+                max_retries=0,
+            )
         except Exception:
             return SAFE_FALLBACK.model_copy(deep=True)
     prompt = (
@@ -49,6 +60,7 @@ def compile_blueprint(telemetry: TelemetrySnapshot, *, client=None,
         "Keep the interface simple and avoid interaction friction."
     )
     try:
+        deadline = time.monotonic() + request_timeout
         response = client.beta.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[
@@ -56,8 +68,12 @@ def compile_blueprint(telemetry: TelemetrySnapshot, *, client=None,
                 {"role": "user", "content": prompt},
             ],
             response_format=UIBlueprint,
-            timeout=timeout_seconds,
+            timeout=request_timeout,
         )
+        # SDK/network timeouts bound the blocking request; this monotonic check also
+        # rejects late parse results and prevents their application to a later window.
+        if time.monotonic() > deadline:
+            return SAFE_FALLBACK.model_copy(deep=True)
         proposal = response.choices[0].message.parsed
         if proposal is None:
             return SAFE_FALLBACK.model_copy(deep=True)
