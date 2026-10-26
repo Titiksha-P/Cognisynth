@@ -4,6 +4,7 @@ from __future__ import annotations
 import math
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -70,9 +71,8 @@ def compile_blueprint(
         f"response_latency_ms={telemetry.response_latency_ms}, alarm_rate={telemetry.alarm_rate}. "
         "Keep the interface simple and avoid interaction friction."
     )
-    try:
-        deadline = time.monotonic() + request_timeout
-        response = client.beta.chat.completions.parse(
+    def request_candidate():
+        return client.beta.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You propose UI blueprints; deterministic code decides safety."},
@@ -81,10 +81,13 @@ def compile_blueprint(
             response_format=UIBlueprint,
             timeout=request_timeout,
         )
-        # SDK/network timeouts bound the blocking request; this monotonic check also
-        # rejects late parse results and prevents their application to a later window.
-        if time.monotonic() > deadline:
-            return SAFE_FALLBACK.model_copy(deep=True)
+
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cognisynth-inference")
+    future = executor.submit(request_candidate)
+    try:
+        # The caller stops waiting at the deadline even if an injected/custom client
+        # ignores its timeout argument. SDK timeout + retries=0 bound the real HTTP call.
+        response = future.result(timeout=request_timeout)
         proposal = response.choices[0].message.parsed
         if proposal is None:
             return SAFE_FALLBACK.model_copy(deep=True)
