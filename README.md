@@ -94,7 +94,7 @@ This index is a heuristic proxy, not a validated measure of cognitive load. Its 
 
 This implementation is a reproducible research scaffold, not a formal proof of system safety. The LLM output, telemetry assumptions, UI element registry, browser environment, and human-factors hypotheses all require independent evaluation. Any claims about improved performance must be supported by preregistered experiments and measured results.
 
-## 📄 License & Empirical Research Paradigm
+## License & Empirical Research Paradigm
 
 ### Open Source Declaration
 
