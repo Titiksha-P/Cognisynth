@@ -125,7 +125,14 @@ def visual_entropy_index(blueprint: UIBlueprint) -> float:
     )
 
 
-def validate_proposal(proposal: UIBlueprint, expected_panic_index: float) -> ValidationResult:
+def validate_proposal(
+    proposal: UIBlueprint,
+    expected_panic_index: float,
+    *,
+    previous_panic_index: float | None = None,
+    previous_visual_entropy_index: float | None = None,
+    entropy_tolerance: float = 0.0,
+) -> ValidationResult:
     violations: list[Violation] = []
 
     def add(code: str, message: str) -> None:
@@ -171,6 +178,20 @@ def validate_proposal(proposal: UIBlueprint, expected_panic_index: float) -> Val
     if proposal.density_score > expected_density_ceiling:
         add("DENSITY_CEILING_EXCEEDED", f"Density {proposal.density_score} exceeds ceiling {expected_density_ceiling:.3f}.")
 
+    # Cross-window monotonicity: when the deterministic stress proxy rises,
+    # visual entropy must not rise above the previous accepted state. Callers
+    # must provide the previous accepted state to enable this temporal invariant.
+    if previous_panic_index is not None and previous_visual_entropy_index is not None:
+        if expected_panic_index > previous_panic_index:
+            candidate_entropy = visual_entropy_index(proposal)
+            allowed_entropy = previous_visual_entropy_index + max(0.0, entropy_tolerance)
+            if candidate_entropy > allowed_entropy:
+                add(
+                    "VISUAL_ENTROPY_MONOTONICITY_VIOLATION",
+                    f"Stress increased ({previous_panic_index:.4f} -> {expected_panic_index:.4f}) "
+                    f"but visual entropy increased ({candidate_entropy:.4f} > {allowed_entropy:.4f}).",
+                )
+
     if abs(proposal.panic_index - expected_panic_index) > 0.20:
         add("PANIC_INDEX_MISMATCH", "Blueprint panic index differs materially from deterministic telemetry estimate.")
 
@@ -189,7 +210,14 @@ def validate_proposal(proposal: UIBlueprint, expected_panic_index: float) -> Val
     )
 
 
-def validate_payload(payload: str | bytes | Dict[str, Any], expected_panic_index: float = 0.0) -> ValidationResult:
+def validate_payload(
+    payload: str | bytes | Dict[str, Any],
+    expected_panic_index: float = 0.0,
+    *,
+    previous_panic_index: float | None = None,
+    previous_visual_entropy_index: float | None = None,
+    entropy_tolerance: float = 0.0,
+) -> ValidationResult:
     """Parse untrusted JSON/object payloads and fail closed on Pydantic or invariant errors."""
     try:
         if isinstance(payload, (str, bytes, bytearray)):
@@ -210,7 +238,13 @@ def validate_payload(payload: str | bytes | Dict[str, Any], expected_panic_index
             violations=[Violation(code="SCHEMA_VALIDATION_ERROR", message=str(exc))],
             visual_entropy_index=visual_entropy_index(SAFE_FALLBACK),
         )
-    return validate_proposal(proposal, expected_panic_index=expected_panic_index)
+    return validate_proposal(
+        proposal,
+        expected_panic_index=expected_panic_index,
+        previous_panic_index=previous_panic_index,
+        previous_visual_entropy_index=previous_visual_entropy_index,
+        entropy_tolerance=entropy_tolerance,
+    )
 
 
 def main() -> None:
