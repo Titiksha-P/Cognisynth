@@ -8,7 +8,12 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from safety.formal_validator import UIBlueprint, SAFE_FALLBACK, validate_proposal
+from safety.formal_validator import (
+    UIBlueprint,
+    SAFE_FALLBACK,
+    validate_proposal,
+    visual_entropy_index,
+)
 
 
 class TelemetrySnapshot(BaseModel):
@@ -30,8 +35,14 @@ def panic_index(t: TelemetrySnapshot) -> float:
                             + 0.20 * latency + 0.15 * alarms + 0.10 * workload)), 4)
 
 
-def compile_blueprint(telemetry: TelemetrySnapshot, *, client=None,
-                      timeout_seconds: float = 0.75, max_age_seconds: float = 10.0) -> UIBlueprint:
+def compile_blueprint(
+    telemetry: TelemetrySnapshot,
+    *,
+    client=None,
+    timeout_seconds: float = 0.75,
+    max_age_seconds: float = 10.0,
+    previous_blueprint: Optional[UIBlueprint] = None,
+) -> UIBlueprint:
     """Return a validated blueprint or deterministic fallback; never trust raw model output.
 
     The inference/parse path is capped at 750 ms. SDK retries are disabled so a retry
@@ -77,7 +88,17 @@ def compile_blueprint(telemetry: TelemetrySnapshot, *, client=None,
         proposal = response.choices[0].message.parsed
         if proposal is None:
             return SAFE_FALLBACK.model_copy(deep=True)
-        result = validate_proposal(proposal, expected_panic_index=panic_index(telemetry))
+        previous_state = {}
+        if previous_blueprint is not None:
+            previous_state = {
+                "previous_panic_index": previous_blueprint.panic_index,
+                "previous_visual_entropy_index": visual_entropy_index(previous_blueprint),
+            }
+        result = validate_proposal(
+            proposal,
+            expected_panic_index=panic_index(telemetry),
+            **previous_state,
+        )
         return result.blueprint if result.accepted else SAFE_FALLBACK.model_copy(deep=True)
     except Exception:
         return SAFE_FALLBACK.model_copy(deep=True)
