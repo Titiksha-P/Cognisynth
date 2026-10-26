@@ -1,0 +1,67 @@
+"""Telemetry-to-blueprint compiler. Model output is always passed through a deterministic validator."""
+from __future__ import annotations
+
+import math
+import os
+import time
+from typing import Optional
+
+from pydantic import BaseModel, Field
+
+from safety.formal_validator import UIBlueprint, SAFE_FALLBACK, validate_proposal
+
+
+class TelemetrySnapshot(BaseModel):
+    timestamp: float = Field(default_factory=time.time)
+    heart_rate_bpm: float = Field(ge=25, le=240)
+    error_rate: float = Field(ge=0, le=1)
+    response_latency_ms: float = Field(ge=0, le=120000)
+    alarm_rate: float = Field(ge=0, le=100)
+    workload_self_report: float = Field(default=0.0, ge=0, le=10)
+
+
+def panic_index(t: TelemetrySnapshot) -> float:
+    """Deterministic, interpretable synthetic panic proxy in [0, 1]."""
+    hr = min(1.0, max(0.0, (t.heart_rate_bpm - 60.0) / 100.0))
+    latency = min(1.0, t.response_latency_ms / 5000.0)
+    alarms = min(1.0, t.alarm_rate / 10.0)
+    workload = t.workload_self_report / 10.0
+    return round(min(1.0, max(0.0, 0.30 * hr + 0.25 * t.error_rate
+                            + 0.20 * latency + 0.15 * alarms + 0.10 * workload)), 4)
+
+
+def compile_blueprint(telemetry: TelemetrySnapshot, *, client=None,
+                      timeout_seconds: float = 4.0, max_age_seconds: float = 10.0) -> UIBlueprint:
+    """Return a validated blueprint or deterministic fallback; never trust raw model output."""
+    if time.time() - telemetry.timestamp > max_age_seconds:
+        return SAFE_FALLBACK.model_copy(deep=True)
+    if client is None:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"), timeout=timeout_seconds)
+        except Exception:
+            return SAFE_FALLBACK.model_copy(deep=True)
+    prompt = (
+        "Propose a conservative UI blueprint as structured data. Never hide critical controls. "
+        "Use only registered identifiers. Treat telemetry as noisy. "
+        f"Telemetry: panic_index={panic_index(telemetry)}, error_rate={telemetry.error_rate}, "
+        f"response_latency_ms={telemetry.response_latency_ms}, alarm_rate={telemetry.alarm_rate}. "
+        "Keep the interface simple and avoid interaction friction."
+    )
+    try:
+        response = client.beta.chat.completions.parse(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You propose UI blueprints; deterministic code decides safety."},
+                {"role": "user", "content": prompt},
+            ],
+            response_format=UIBlueprint,
+            timeout=timeout_seconds,
+        )
+        proposal = response.choices[0].message.parsed
+        if proposal is None:
+            return SAFE_FALLBACK.model_copy(deep=True)
+        result = validate_proposal(proposal, expected_panic_index=panic_index(telemetry))
+        return result.blueprint if result.accepted else SAFE_FALLBACK.model_copy(deep=True)
+    except Exception:
+        return SAFE_FALLBACK.model_copy(deep=True)
