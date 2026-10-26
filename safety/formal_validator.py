@@ -4,12 +4,52 @@ This is a research prototype, not a certified safety system.
 """
 from __future__ import annotations
 
+import json
 import math
-from typing import List, Dict
-from pydantic import BaseModel, Field, ConfigDict
+from typing import List, Dict, Any
+
+from pydantic import BaseModel, Field, ConfigDict, ValidationError, model_validator
 
 FRAME_BUDGET_MS = 16.67
+OPERATIONAL_HOME = "home"
 CRITICAL_CONTROLS = {"master_emergency_shutoff", "alarm_acknowledge", "manual_override"}
+
+
+def _graph_nodes(navigation_graph: Dict[str, List[str]]) -> set[str]:
+    nodes = set(navigation_graph)
+    for targets in navigation_graph.values():
+        nodes.update(targets)
+    return nodes
+
+
+def _nodes_reach_home(navigation_graph: Dict[str, List[str]]) -> tuple[bool, str]:
+    """Require every declared/referenced navigation node to have a path to operational home."""
+    nodes = _graph_nodes(navigation_graph)
+    if OPERATIONAL_HOME not in nodes:
+        return False, f"Navigation graph must include OPERATIONAL_HOME={OPERATIONAL_HOME!r}."
+
+    # Reverse edges so a single traversal identifies every node with a path to home.
+    reverse: dict[str, list[str]] = {node: [] for node in nodes}
+    for source, targets in navigation_graph.items():
+        for target in targets:
+            reverse.setdefault(target, []).append(source)
+
+    can_reach_home = {OPERATIONAL_HOME}
+    stack = [OPERATIONAL_HOME]
+    while stack:
+        node = stack.pop()
+        for predecessor in reverse.get(node, []):
+            if predecessor not in can_reach_home:
+                can_reach_home.add(predecessor)
+                stack.append(predecessor)
+
+    unreachable = sorted(nodes - can_reach_home)
+    if unreachable:
+        return False, (
+            "Every navigation node must have a directed path back to "
+            f"OPERATIONAL_HOME={OPERATIONAL_HOME!r}; unreachable nodes: {unreachable}."
+        )
+    return True, ""
 
 
 class UIBlueprint(BaseModel):
@@ -24,6 +64,13 @@ class UIBlueprint(BaseModel):
     panic_index: float = Field(ge=0, le=1)
     density_score: float = Field(ge=0)
     rationale: str = ""
+
+    @model_validator(mode="after")
+    def every_node_can_return_home(self) -> "UIBlueprint":
+        valid, message = _nodes_reach_home(self.navigation_graph)
+        if not valid:
+            raise ValueError(message)
+        return self
 
 
 class Violation(BaseModel):
@@ -47,8 +94,11 @@ SAFE_FALLBACK = UIBlueprint(
     visible_streams=["primary_status"],
     collapsed_streams=[],
     navigation_graph={
-        "home": ["primary_status", "master_emergency_shutoff"],
-        "primary_status": ["alarm_acknowledge", "manual_override"],
+        "home": ["primary_status", "master_emergency_shutoff", "alarm_acknowledge", "manual_override"],
+        "primary_status": ["home", "alarm_acknowledge", "manual_override"],
+        "master_emergency_shutoff": ["home"],
+        "alarm_acknowledge": ["home"],
+        "manual_override": ["home"],
     },
     interaction_friction_ms={
         "master_emergency_shutoff": 0,
@@ -98,12 +148,15 @@ def validate_proposal(proposal: UIBlueprint, expected_panic_index: float) -> Val
     if proposal.async_blocking:
         add("ASYNC_BLOCKING_PROHIBITED", "Blocking asynchronous work is prohibited in the UI runtime.")
 
-    graph_nodes = set(proposal.navigation_graph)
-    for targets in proposal.navigation_graph.values():
-        graph_nodes.update(targets)
-    if "home" in graph_nodes:
+    graph_valid, graph_message = _nodes_reach_home(proposal.navigation_graph)
+    if not graph_valid:
+        add("DANGLING_GRAPH_EDGE", graph_message)
+
+    # Retain the explicit home-to-critical-control reachability requirement as a separate invariant.
+    graph_nodes = _graph_nodes(proposal.navigation_graph)
+    if OPERATIONAL_HOME in graph_nodes:
         reachable = set()
-        stack = ["home"]
+        stack = [OPERATIONAL_HOME]
         while stack:
             node = stack.pop()
             if node in reachable:
@@ -112,7 +165,7 @@ def validate_proposal(proposal: UIBlueprint, expected_panic_index: float) -> Val
             stack.extend(proposal.navigation_graph.get(node, []))
         for control in CRITICAL_CONTROLS:
             if control not in reachable:
-                add("CRITICAL_CONTROL_UNREACHABLE", f"Critical control is not reachable from home: {control}")
+                add("CRITICAL_CONTROL_UNREACHABLE", f"Critical control is not reachable from OPERATIONAL_HOME: {control}")
 
     expected_density_ceiling = 3.0 - 1.5 * max(0.0, min(1.0, expected_panic_index))
     if proposal.density_score > expected_density_ceiling:
@@ -134,6 +187,30 @@ def validate_proposal(proposal: UIBlueprint, expected_panic_index: float) -> Val
         violations=[],
         visual_entropy_index=visual_entropy_index(proposal),
     )
+
+
+def validate_payload(payload: str | bytes | Dict[str, Any], expected_panic_index: float = 0.0) -> ValidationResult:
+    """Parse untrusted JSON/object payloads and fail closed on Pydantic or invariant errors."""
+    try:
+        if isinstance(payload, (str, bytes, bytearray)):
+            proposal = UIBlueprint.model_validate_json(payload)
+        else:
+            proposal = UIBlueprint.model_validate(payload)
+    except ValidationError as exc:
+        return ValidationResult(
+            accepted=False,
+            blueprint=SAFE_FALLBACK.model_copy(deep=True),
+            violations=[Violation(code="SCHEMA_VALIDATION_ERROR", message=str(exc))],
+            visual_entropy_index=visual_entropy_index(SAFE_FALLBACK),
+        )
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        return ValidationResult(
+            accepted=False,
+            blueprint=SAFE_FALLBACK.model_copy(deep=True),
+            violations=[Violation(code="SCHEMA_VALIDATION_ERROR", message=str(exc))],
+            visual_entropy_index=visual_entropy_index(SAFE_FALLBACK),
+        )
+    return validate_proposal(proposal, expected_panic_index=expected_panic_index)
 
 
 def main() -> None:
