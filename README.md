@@ -94,6 +94,29 @@ This index is a heuristic proxy, not a validated measure of cognitive load. Its 
 
 This implementation is a reproducible research scaffold, not a formal proof of system safety. The LLM output, telemetry assumptions, UI element registry, browser environment, and human-factors hypotheses all require independent evaluation. Any claims about improved performance must be supported by preregistered experiments and measured results.
 
-## License
+## 📄 License & Empirical Research Paradigm
 
-Cognisynth is open-source software licensed under the **MIT License**. You may use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the software, subject to the conditions in the [`LICENSE`](LICENSE) file. The software is provided **“AS IS”**, without warranty of any kind, as described in the license.
+### Open Source Declaration
+
+The **Cognisynth** core software suite, including its telemetry compilation pipelines, structural validation layers, and real-time frontend mutation adapters, is open-source software distributed under the permissive terms of the **MIT License**. See the full [MIT License](LICENSE) for the applicable terms.
+
+### Academic Research Disclaimer
+
+This architecture is an experimental human-factors research prototype designed to investigate computational psychometrics and cognitive de-escalation models within human-machine interfaces. It is provided **"AS IS"**, without warranty of any kind, express or implied. It has not been formally certified for live deployment in mission-critical safety environments, including active aerospace telemetry, automated nuclear operations, or real-world cyber-defense triage. Such use requires independent, deterministic, site-specific validation and empirical calibration; this repository does not itself establish that those conditions have been met.
+
+### Institutional Citation Framework
+
+If you use the Cognisynth architecture, deterministic validation layer, or adaptive UI compiler mechanisms in an academic publication or laboratory pilot study, please cite the framework as follows:
+
+```bibtex
+@misc{cognisynth2026,
+  author       = {Pattanayak, T.},
+  title        = {Cognisynth: A Deterministic Runtime-Compiler Framework for Safety-Gated Cognitive UI Synthesis},
+  year         = {2026},
+  publisher    = {GitHub},
+  howpublished = {\url{https://github.com/Titiksha-P/Cognisynth}},
+  note         = {Software repository}
+}
+```
+
+Repository: [github.com/Titiksha-P/Cognisynth](https://github.com/Titiksha-P/Cognisynth)
