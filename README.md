@@ -96,4 +96,4 @@ This implementation is a reproducible research scaffold, not a formal proof of s
 
 ## License
 
-Cognisynth is licensed under the **MIT License**.
+Cognisynth is open-source software licensed under the **MIT License**. You may use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the software, subject to the conditions in the [`LICENSE`](LICENSE) file. The software is provided **“AS IS”**, without warranty of any kind, as described in the license.
