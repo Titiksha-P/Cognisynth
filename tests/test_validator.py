@@ -2,6 +2,8 @@
 import json
 import unittest
 
+from pydantic import ValidationError
+
 from safety.formal_validator import (
     SAFE_FALLBACK,
     UIBlueprint,
@@ -51,7 +53,7 @@ class ValidatorTests(unittest.TestCase):
         self.assertFalse(result.accepted)
         self.assertEqual(result.blueprint, SAFE_FALLBACK)
         self.assertIn("SCHEMA_VALIDATION_ERROR", {v.code for v in result.violations})
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             UIBlueprint.model_validate_json(json.dumps(payload))
 
     def test_corrupt_json_density_ceiling_violation_falls_back(self):
