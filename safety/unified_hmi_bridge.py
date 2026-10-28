@@ -34,7 +34,7 @@ PANIC_TERMS = frozenset(
     }
 )
 URGENCY_MARKERS = frozenset({"!", "!!", "!!!", "??", "??!"})
-_TOKEN_PATTERN = re.compile(r"[A-Za-z]+(?:['’][A-Za-z]+)?|[!?]{1,3}|\\.{2,}")
+_TOKEN_PATTERN = re.compile(r"[A-Za-z]+(?:['’][A-Za-z]+)?|[!?]{1,3}|\.{2,}")
 
 
 class NeuralHMIPayload(BaseModel):
