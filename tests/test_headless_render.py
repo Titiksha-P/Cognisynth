@@ -175,7 +175,11 @@ class HeadlessRenderTests(unittest.TestCase):
             )
         finally:
             if browser is not None:
-                browser.close()
+                try:
+                    browser.close()
+                except Exception:
+                    # The Playwright context manager may already have closed it.
+                    pass
 
     def test_invalid_frame_budget_is_rejected_by_safety_gate(self) -> None:
         proposal = SAFE_FALLBACK.model_copy(deep=True)
